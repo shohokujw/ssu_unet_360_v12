@@ -20,6 +20,24 @@ model_profiles:
     w_l: 0.7
     w_h: 0.3
 
+# ---------------------------------------------------------------------------
+# v12: the network input is an FBP of NETWORK-SYNTHESISED views, not the 9
+# measured ones. step1b_make_fbp_interp.py produces it.
+#
+# The interpolator must share this file's dataset_split, or its synthesised
+# views for our val/test subjects come from a model that already saw them.
+# Rebuild its cache with:
+#   python Step1_make_cache.py --split_from <this file>
+# step1b verifies this and refuses to run otherwise.
+# ---------------------------------------------------------------------------
+interp_project : "/home/jwlee/sinogram_interpolation_pix2pix_v9"
+interp_ckpt : "/home/jwlee/sinogram_interpolation_pix2pix_v9/experiments/v10_UNet_G6_splitv11/checkpoints/model_best.pth"
+
+# Which reconstruction feeds the denoiser.
+#   fbp_interp -> step1b output (synthesised views)   <- v12 default
+#   fbp_lh     -> step1 output  (9 measured views)    <- v11 behaviour
+input_name : "fbp_interp"
+
 # model specification
 prj_path : "/mnt/c/Dropbox/work/SSTLabs/360CT/volume_data//prj"
 label_path :  "/home/jwlee/ssu_unet_360_v11/datasets/fbp_full" #"/mnt/c/Dropbox/work/SSTLabs/360CT/volume_data//mbir"
@@ -246,7 +264,12 @@ dataset_split:
 
 # Normalization parameters per image size
 normalization:
-  # FBP input normalization
+  # FBP input normalization.
+  #
+  # These were fitted to 9-VIEW FBP. A reconstruction from synthesised views has
+  # a different intensity distribution (the streaks that inflated the tail are
+  # largely gone), so reusing them would scale the input into the wrong range.
+  # Recalibrate with step1c_calibrate_norm.py and fill in fbp_interp below.
   fbp:
     512:
       max_h: 0.51

@@ -1,5 +1,15 @@
 """
-Model Training Script (Step 4)
+Model Training Script (Step 5)
+
+v12: the input is an FBP of network-synthesised views, so the v11 weights are a
+good starting point but the input distribution has moved. `--init_from` seeds a
+fresh run with another checkpoint's parameters -- weights only, not the
+optimiser moments (they encode gradients for the old inputs) and not the epoch
+counter (the LR schedule should start over). Resuming this run's own ckpt_dir
+still takes precedence, so an interrupted fine-tune continues correctly.
+
+The experiment directory carries `input_name`, so a v12 run never overwrites the
+v11 baseline and the two can be compared directly.
 
 This script trains the Pix2Pix GAN model for sparse-view CT reconstruction.
 
@@ -127,6 +137,7 @@ def main(args):
         sys.exit(1)
 
     data_name = params_ct['model_name']
+    input_name = params_ct.get('input_name', 'fbp_lh')
 
     fbp_path = params_ct['fbp_path']
     label_path = f'{current_folder}/fbp_full'
@@ -148,6 +159,11 @@ def main(args):
         logger.error(str(e))
         sys.exit(1)
 
+    # Keep v12 runs in their own tree so the v11 baseline stays intact and the
+    # two are directly comparable.
+    if input_name != 'fbp_lh':
+        exp = f'{exp}__{input_name}'
+
     config[model_name]['batch_size'] = batch_size
     print(config[model_name])
     print(args)
@@ -164,6 +180,10 @@ def main(args):
     except Exception as e:
         logger.error(f"Failed to create directories: {e}")
         sys.exit(1)
+
+    logger.info(f"Network input: {input_name}")
+    if args.init_from:
+        logger.info(f"Fine-tuning from: {args.init_from}")
 
     data_dir = f'{current_folder}/datasets/{data_name}/fin_set/{img_size}'
 
@@ -227,7 +247,8 @@ def main(args):
                                loader_train=loader_train,
                                loader_val=loader_val,
                                img_size=img_size,
-                               z_slice=z_slice)
+                               z_slice=z_slice,
+                               init_from=args.init_from)
     elif model_name == "UNet":
         Trainer = UNetModel(configs=config[model_name],
                             save_iter=save_iter,
@@ -237,7 +258,8 @@ def main(args):
                             loader_train=loader_train,
                             loader_val=loader_val,
                             img_size=img_size,
-                            z_slice=z_slice)
+                            z_slice=z_slice,
+                            init_from=args.init_from)
 
     Trainer.train()
 
@@ -254,6 +276,11 @@ if __name__ == "__main__":
     parser.add_argument('--num_downs', type=int, default='3')
     parser.add_argument('--model_name', type=str, default='Pix2Pix') # Pix2Pix, UNet
     parser.add_argument('--gpu_id', type=int, default=0)
+    parser.add_argument('--init_from', type=str, default=None,
+                        help='Checkpoint whose WEIGHTS seed a fresh run '
+                             '(fine-tuning). Optimiser state and epoch counter '
+                             'are not carried over. Ignored if this run already '
+                             'has checkpoints of its own.')
     args = parser.parse_args()
     print(args)
     main(args)

@@ -1,8 +1,18 @@
 """
-Dataset Preparation Script (Step 3)
+Dataset Preparation Script (Step 4)
+
+v12: the input is an FBP of network-SYNTHESISED views (step1b), not the 9-view
+sparse FBP. Which directory is read comes from `input_name` in params.yml, so
+setting it back to "fbp_lh" reproduces v11 exactly and gives a like-for-like
+baseline to compare against.
+
+The normalisation constant follows `input_name` too: `normalization.fbp_interp`
+if present, else `normalization.fbp`. Those two distributions differ, and
+reusing the 9-view constant for the synthesised input mis-scales it silently
+(see step1c_calibrate_norm.py).
 
 This script prepares the final training/validation/test datasets by:
-1. Loading FBP reconstructions (9-view sparse) and ground truth (720-view full)
+1. Loading FBP reconstructions and ground truth (720-view full)
 2. Combining dual-energy data (low + high energy weighted)
 3. Normalizing the data based on configuration
 4. Splitting into train/val/test sets
@@ -41,6 +51,7 @@ except Exception as e:
     sys.exit(1)
 model_name = params['model_name']
 
+input_name = params.get('input_name', 'fbp_lh')
 fbp_path = params['fbp_path']
 label_path = f'{current_folder}/datasets/{model_name}/fbp_full'
 label_name = 'FBPfull512_720view'
@@ -60,7 +71,14 @@ if os.path.isabs(fbp_path):
 else:
     fbp_dir = os.path.join(data_root,fbp_path)
 
-fbp_dir = os.path.join(data_root,model_name,fbp_path)
+# v12: read the reconstruction named by input_name, under this project.
+fbp_dir = os.path.join(data_root, model_name, input_name)
+if not os.path.isdir(fbp_dir):
+    logger.error(f'Input directory not found: {fbp_dir}')
+    logger.error('Run step1b_make_fbp_interp.py (or set input_name to an '
+                 'existing directory such as "fbp_lh").')
+    sys.exit(1)
+logger.info(f'Network input: {fbp_dir}')
 
 import argparse
 
@@ -130,13 +148,21 @@ if not lst_data_fbp:
     logger.error("Please run step2_scale_back_and_run_FBP.py first.")
     sys.exit(1)
 
-# Get normalization parameters from configuration
+# Normalisation constants for THIS input. The 9-view constants do not transfer
+# to the synthesised-view reconstruction; step1c_calibrate_norm.py fits them.
+norm_key = input_name if input_name in params.get('normalization', {}) else 'fbp'
+if norm_key != input_name:
+    logger.warning(
+        f'No normalization.{input_name} block in params.yml; falling back to '
+        f'normalization.fbp, which was fitted to 9-view FBP. Run '
+        f'step1c_calibrate_norm.py and add the block, or the input will be '
+        f'scaled into the wrong range.')
 try:
-    fbp_norm_params = get_normalization_params(params, 'fbp', img_size)
+    fbp_norm_params = get_normalization_params(params, norm_key, img_size)
     max_h = fbp_norm_params['max_h']
     max_l = fbp_norm_params['max_l']
     max_lh = w_l * max_l + w_h * max_h
-    logger.info(f"FBP normalization params: max_h={max_h}, max_l={max_l}")
+    logger.info(f"Input normalization ({norm_key}): max_h={max_h}, max_l={max_l}")
 except KeyError as e:
     logger.error(str(e))
     sys.exit(1)

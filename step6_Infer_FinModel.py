@@ -63,14 +63,20 @@ def main(args):
     config[model_name]['num_down_D'] = args.num_downs_D        
     
     exp = f"ndG{config[model_name]['num_down_G']}_ndD{config[model_name]['num_down_D']}" if model_name == 'Pix2Pix' else f"nd{config[model_name]['num_down']}"
+
+    # v12: a run trained on a non-default input lives in its own tree; keep the
+    # suffix in step with step5_Train_FinModel.py or inference silently loads the
+    # v11 baseline's weights instead.
+    input_name = params.get('input_name', 'fbp_lh')
+    exp_suffix = '' if input_name == 'fbp_lh' else f'__{input_name}'
     print(config[model_name])
     print(args)
     
     #ckpt_dir =  f"{current_folder}/{model_name}/{data_name}/{exp}/ckpt/{img_size}"
-    ckpt_dir =  f"{current_folder}/{model_name}/{data_name}/{exp}_dropout_3/ckpt/{img_size}"
+    ckpt_dir =  f"{current_folder}/{model_name}/{data_name}/{exp}_dropout_3{exp_suffix}/ckpt/{img_size}"
 
     
-    result_dir = f"{current_folder}/{model_name}/{data_name}/{exp}_dropout_3/result/{img_size}"
+    result_dir = f"{current_folder}/{model_name}/{data_name}/{exp}_dropout_3{exp_suffix}/result/{img_size}"
     os.makedirs(result_dir, exist_ok=True)
 
     data_dir = f'{current_folder}/datasets/{data_name}/fin_set/{img_size}'

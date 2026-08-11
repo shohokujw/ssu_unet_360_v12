@@ -14,6 +14,36 @@ import matplotlib.pyplot as plt
 from statistics import mean
 
 
+def _load_weights_only(ckpt_path, nets, device):
+    """Seed a fresh run from another run's weights (no optimiser, no epoch).
+
+    v12 fine-tunes the v11 denoiser on a different input distribution, so we
+    want its parameters but not its optimiser moments (they encode gradients
+    for the old inputs) and not its epoch counter (the LR schedule should start
+    over). Tolerates a state_dict saved with or without the DataParallel
+    "module." prefix.
+
+    Args:
+        ckpt_path: file to read.
+        nets: dict of {key in the checkpoint: module to load into}.
+    """
+    ckpt = torch.load(ckpt_path, map_location=device)
+    for key, net in nets.items():
+        if key not in ckpt:
+            print(f'  init_from: no "{key}" in {ckpt_path}, skipping')
+            continue
+        sd = ckpt[key]
+        wrapped = any(k.startswith('module.') for k in net.state_dict())
+        saved_wrapped = any(k.startswith('module.') for k in sd)
+        if wrapped and not saved_wrapped:
+            sd = {'module.' + k: v for k, v in sd.items()}
+        elif saved_wrapped and not wrapped:
+            sd = {k[len('module.'):]: v for k, v in sd.items()}
+        net.load_state_dict(sd)
+        print(f'  init_from: loaded {key} from {ckpt_path}')
+    return nets
+
+
 class ModelUNet:
     """UNet 단독 학습을 위한 클래스 (Discriminator 없이 L1 Loss만 사용)"""
 
@@ -23,7 +53,8 @@ class ModelUNet:
                  device, writer, gpu_id,
                  loader_train, loader_val, img_size,
                  z_slice=608,
-                 test_epoch=None):
+                 test_epoch=None,
+                 init_from=None):
 
         self.ckpt_dir = ckpt_dir
         self.result_dir = result_dir
@@ -41,6 +72,7 @@ class ModelUNet:
 
         self.save_iter = save_iter
         self.test_epoch = test_epoch
+        self.init_from = init_from
 
         self.device = device
         self.gpu_id = gpu_id
@@ -101,7 +133,10 @@ class ModelUNet:
         st_epoch = 0
         ckpts = os.listdir(self.ckpt_dir)
         if len(ckpts) > 0:
+            # Resuming this run always wins over seeding a new one.
             netG, optimG, st_epoch = self.load(self.ckpt_dir, netG, optimG, mode='train')
+        elif self.init_from:
+            _load_weights_only(self.init_from, {'netG': netG}, self.device)
 
         for epoch in range(st_epoch + 1, self.num_epoch + 1):
             ## training phase
@@ -249,7 +284,8 @@ class Model:
                  device, writer, gpu_id,
                  loader_train,loader_val,img_size,
                  z_slice = 608,
-                 test_epoch=None):
+                 test_epoch=None,
+                 init_from=None):
 
         
         self.ckpt_dir = ckpt_dir
@@ -279,6 +315,7 @@ class Model:
         self.save_iter = save_iter
 
         self.test_epoch = test_epoch
+        self.init_from = init_from
 
         self.device = device
         self.gpu_id = gpu_id
@@ -353,7 +390,10 @@ class Model:
         ckpts = os.listdir(self.ckpt_dir)
         # print(self.rank)
         if len(ckpts) > 0:
+            # Resuming this run always wins over seeding a new one.
             netG, netD, optimG, optimD, st_epoch = self.load(self.ckpt_dir, netG, netD, optimG, optimD, mode='train')
+        elif self.init_from:
+            _load_weights_only(self.init_from, {'netG': netG, 'netD': netD}, self.device)
 
 
         # if isinstance(netG, DDP):
