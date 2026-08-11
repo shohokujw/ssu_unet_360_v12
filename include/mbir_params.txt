@@ -1,0 +1,14 @@
+default
+# LOW
+params['alpha']  = 0.0001
+params['beta']   = 0.1
+params['rho']    = 5.0
+params['mu']     = 1000.0
+params['th']     = 0.0060
+# HIGH
+params['alpha']  = 0.0001
+params['beta']   = 0.1
+params['rho']    = 10.0
+params['mu']     = 1000.0
+params['th']     = 0.0085
+

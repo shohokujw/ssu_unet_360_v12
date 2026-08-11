@@ -1,0 +1,39 @@
+Pix2Pix :
+  norm : 'bnorm'
+  batch_size : 32
+  num_down_G : 6 # 8
+  num_down_D : 4 # 4
+  lr_G : 0.0002
+  lr_D : 0.0002
+  wgt_l1 : 100.0
+  wgt_gan : 1.0
+  n_epochs : 1300
+  beta1 : 0.5
+  beta2 : 0.999
+  init_gain : 0.02
+  dropout : 0.3
+
+UNet :
+  norm : 'bnorm'
+  num_down : 6 # 4
+  batch_size : 32
+  n_epochs : 900
+  wgt_decay : 0.0001
+  lr : 0.0001
+  dropout : 0.3
+  init_gain : 0.02
+
+DDBM :
+  image_size : 256
+  num_workers : 2 # 4
+  batch_size : 2 # 4
+  save_interval_for_preemption : 500000
+  save_interval : 50000
+  total_training_steps : 200000
+  ngpu : 1
+  n_view : 9
+  full_view : 360 # or 720
+  step : 60
+  test_step : 100000
+
+
