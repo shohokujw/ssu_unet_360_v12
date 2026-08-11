@@ -31,7 +31,13 @@ model_profiles:
 # step1b verifies this and refuses to run otherwise.
 # ---------------------------------------------------------------------------
 interp_project : "/home/jwlee/sinogram_interpolation_pix2pix_v9"
-interp_ckpt : "/home/jwlee/sinogram_interpolation_pix2pix_v9/experiments/v10_UNet_G6_splitv11/checkpoints/model_best.pth"
+# The fully trained unet-G6 (closed-loop: 81/58/63% of the achievable gap).
+# Its own split overlaps 9 of our test subjects, but a direct check found NO
+# memorisation -- on subjects it never saw it scores 10% BETTER than on subjects
+# it trained on -- so the overlap does not inflate anything measured here.
+# v10_UNet_G6_splitv11 is the same recipe on a non-overlapping split, for when a
+# result has to be airtight without relying on that measurement.
+interp_ckpt : "/home/jwlee/sinogram_interpolation_pix2pix_v9/experiments/v10_UNet_G6_gaps40-20-10/checkpoints/model_best.pth"
 
 # Which reconstruction feeds the denoiser.
 #   fbp_interp -> step1b output (synthesised views)   <- v12 default
@@ -280,6 +286,16 @@ normalization:
     128:
       max_h: 0.47
       max_l: 0.31
+  # v12 input: FBP of network-synthesised views (step1b).
+  # Fitted by step1c_calibrate_norm.py on the 51 train subjects, preserving the
+  # headroom the 9-view constant had over its own data (1.10x global max /
+  # 4.01x p99.9) so the two inputs are scaled on the same basis and an A/B
+  # measures the input change rather than the normalisation change.
+  fbp_interp:
+    512:
+      max_h: 0.272
+      max_l: 0.272
+
   # Label (full-view FBP) normalization
   label:
     512:

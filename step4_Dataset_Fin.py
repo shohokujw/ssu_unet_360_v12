@@ -53,7 +53,11 @@ model_name = params['model_name']
 
 input_name = params.get('input_name', 'fbp_lh')
 fbp_path = params['fbp_path']
-label_path = f'{current_folder}/datasets/{model_name}/fbp_full'
+# Honour params.yml. This used to be hardcoded to a path under this project,
+# which silently overrode the configured label_path: the labels then came up
+# empty, the run warned and exited 0, and the dataset looked built while having
+# no targets at all.
+label_path = params.get('label_path') or f'{current_folder}/datasets/{model_name}/fbp_full'
 label_name = 'FBPfull512_720view'
 label_key = 'fbp'
 
@@ -218,8 +222,13 @@ except KeyError as e:
     sys.exit(1)
 
 if not lst_data_label:
-    logger.warning(f"No label data files found in: {label_dir}")
-    logger.warning("Skipping label processing.")
+    # A dataset with inputs and no targets is not a partial success; training on
+    # it fails later and further from the cause. Stop here.
+    logger.error(f"No label data files found in: {label_dir}")
+    logger.error("Set label_path in params.yml to the full-view reconstruction "
+                 "directory, or link the per-slice labels from an existing "
+                 "fin_set if one was already built for this split.")
+    sys.exit(1)
 else:
     for path_data in lst_data_label:
         # Use utility function to extract subject ID

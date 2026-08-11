@@ -97,18 +97,37 @@ def load_interpolator(project, ckpt_path, device):
         make_cond, resolve_angles, train_args
 
 
-def verify_no_leak(project, params, subjects):
-    """Refuse to run if the interpolator trained on our val/test subjects."""
-    manifest_path = os.path.join(project, 'datasets', 'cache', 'manifest.json')
-    if not os.path.exists(manifest_path):
-        print(f'WARNING: {manifest_path} not found; cannot verify the split. '
-              'Proceeding, but the evaluation may be contaminated.')
-        return
-    with open(manifest_path, 'r') as f:
-        manifest = json.load(f)
-    interp_train = {s for s, m in manifest['subjects'].items() if m['split'] == 'train'}
+def verify_no_leak(ckpt_path, params):
+    """Refuse to run if the interpolator trained on our val/test subjects.
 
+    The split is read from the checkpoint's own experiment_config.json, NOT from
+    the interpolation project's cache manifest. The manifest records whatever
+    split was last written and can be rebuilt after training, so checking
+    against it can pass for the wrong reason -- exactly the false negative this
+    function exists to prevent.
+    """
     held_out = set(params['dataset_split']['val']) | set(params['dataset_split']['test'])
+
+    cfg_path = os.path.join(os.path.dirname(os.path.dirname(ckpt_path)),
+                            'experiment_config.json')
+    with open(cfg_path, 'r') as f:
+        cfg = json.load(f)
+
+    if 'split' not in cfg:
+        print()
+        print('!' * 76)
+        print('CANNOT VERIFY THE SPLIT')
+        print(f'  {cfg_path}')
+        print('  has no "split" entry, so which subjects this interpolator saw is')
+        print('  unknown. Its synthesised views for a subject it trained on may be')
+        print('  better than deployment would give, which inflates any downstream')
+        print('  result measured on that subject.')
+        print('  Checkpoints trained after this check was added record their split.')
+        print('!' * 76)
+        print()
+        return
+
+    interp_train = set(cfg['split']['train'])
     leak = sorted(held_out & interp_train)
     if leak:
         raise RuntimeError(
@@ -116,11 +135,11 @@ def verify_no_leak(project, params, subjects):
             f'TRAINING set: {leak}\n'
             'Their synthesised views would come from a network that has already '
             'seen them, so any downstream result on them is optimistic.\n'
-            f'Fix: rebuild that cache with\n'
+            'Fix: rebuild that cache with\n'
             f'  python Step1_make_cache.py --split_from {current_folder}/include/params.yml\n'
             'and retrain the interpolator.')
-    print(f'Split check OK: none of our {len(held_out)} val/test subjects were '
-          'seen by the interpolator.')
+    print(f'Split check OK: none of our {len(held_out)} val/test subjects appear '
+          f"in the interpolator's training split.")
 
 
 # ----------------------------------------------------------------------------
@@ -260,7 +279,7 @@ def main():
     print(f'target gap : {args.target_gap}°  (+{args.gap_tol}° slack)')
 
     if not args.skip_leak_check:
-        verify_no_leak(project, cfg, None)
+        verify_no_leak(ckpt, cfg)
 
     netG, use_abs_angle, trained_gaps, make_cond, resolve_angles, _ = \
         load_interpolator(project, ckpt, device)
