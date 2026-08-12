@@ -195,6 +195,12 @@ def main(args):
         logger.error(f"Failed to create directories: {e}")
         sys.exit(1)
 
+    # Optional extra preview panel: the same slice as the old 9-view FBP, so
+    # what the network is fed now sits beside what v11 was fed.
+    preview_baseline = params_ct.get('preview_baseline') or {}
+    if preview_baseline.get('path'):
+        logger.info(f"Preview baseline: {preview_baseline['path']}")
+
     logger.info(f"Network input: {input_name}")
     if args.init_from:
         logger.info(f"Fine-tuning from: {args.init_from}")
@@ -266,7 +272,8 @@ def main(args):
                                img_size=img_size,
                                z_slice=z_slice,
                                init_from=args.init_from,
-                               preview_every=args.preview_every)
+                               preview_every=args.preview_every,
+                               preview_baseline=preview_baseline)
     elif model_name == "UNet":
         Trainer = UNetModel(configs=config[model_name],
                             save_iter=save_iter,
@@ -278,7 +285,8 @@ def main(args):
                             img_size=img_size,
                             z_slice=z_slice,
                             init_from=args.init_from,
-                            preview_every=args.preview_every)
+                            preview_every=args.preview_every,
+                            preview_baseline=preview_baseline)
 
     Trainer.train()
 

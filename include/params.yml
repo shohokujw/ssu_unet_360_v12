@@ -44,6 +44,20 @@ interp_ckpt : "/home/jwlee/sinogram_interpolation_pix2pix_v9/experiments/v10_UNe
 #   fbp_lh     -> step1a output (9 measured views)    <- v11 behaviour
 input_name : "fbp_interp"
 
+# Extra panel in the training preview: the same slice reconstructed the old
+# way, so the 9 measured views and the synthesised-view input sit side by side
+# under one window and the streak difference is visible at a glance.
+#
+# v12 never rebuilt fbp_lh -- the 9-view reconstructions still live in the v11
+# tree, which is why this points out of the project. Read once per run, not per
+# epoch. Comment out `path` (or point it somewhere that does not exist) and the
+# preview simply drops back to four panels.
+preview_baseline :
+  path  : "/home/jwlee/ssu_unet_360_v11/datasets/model_Gen3_7/fbp_lh"
+  prefix: "FBP_"
+  key   : "fbp_lh"
+  label : "9-view FBP (v11)"
+
 # model specification
 prj_path : "/mnt/c/Dropbox/work/SSTLabs/360CT/volume_data//prj"
 label_path :  "/home/jwlee/ssu_unet_360_v11/datasets/fbp_full" #"/mnt/c/Dropbox/work/SSTLabs/360CT/volume_data//mbir"
