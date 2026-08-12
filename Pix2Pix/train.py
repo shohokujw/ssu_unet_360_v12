@@ -54,7 +54,8 @@ class ModelUNet:
                  loader_train, loader_val, img_size,
                  z_slice=608,
                  test_epoch=None,
-                 init_from=None):
+                 init_from=None,
+                 preview_every=1):
 
         self.ckpt_dir = ckpt_dir
         self.result_dir = result_dir
@@ -71,6 +72,9 @@ class ModelUNet:
         self.init_gain = configs.get('init_gain', 0.02)
 
         self.save_iter = save_iter
+        # Previews are cheap next to an epoch of training, so default to
+        # every epoch; raise it if the PNGs become a nuisance.
+        self.preview_every = max(1, int(preview_every))
         self.test_epoch = test_epoch
         self.init_from = init_from
 
@@ -189,7 +193,7 @@ class ModelUNet:
 
                 self.writer.add_scalar('loss_l1_val', mean(loss_l1_val), epoch)
 
-            if epoch == 1 or (epoch % self.save_iter) == 0:
+            if (epoch % self.preview_every) == 0:
                 save_preview(netG, epoch, max_l, preview,
                              self.device, self.result_dir, self.writer)
 
@@ -386,7 +390,8 @@ class Model:
                  loader_train,loader_val,img_size,
                  z_slice = 608,
                  test_epoch=None,
-                 init_from=None):
+                 init_from=None,
+                 preview_every=1):
 
         
         self.ckpt_dir = ckpt_dir
@@ -414,6 +419,9 @@ class Model:
         
         
         self.save_iter = save_iter
+        # Previews are cheap next to an epoch of training, so default to
+        # every epoch; raise it if the PNGs become a nuisance.
+        self.preview_every = max(1, int(preview_every))
 
         self.test_epoch = test_epoch
         self.init_from = init_from
@@ -631,9 +639,7 @@ class Model:
 
 
                         
-            # Epoch 1 too, so there is a "before" frame to compare against
-            # rather than waiting a whole save_iter for the first image.
-            if epoch == 1 or (epoch % self.save_iter) == 0:
+            if (epoch % self.preview_every) == 0:
                 self.save_preview(netG, epoch, max_l, preview)
 
             if (epoch % self.save_iter) == 0:

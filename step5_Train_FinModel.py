@@ -41,6 +41,20 @@ Usage:
 
     # UNet (nohup)
     nohup python3 -u step5_Train_FinModel.py --img_size 512 --num_downs 3 --model_name UNet --gpu_id 0 > nohup.out 2>&1 &
+
+Watching a nohup'd run:
+    # Live progress bar, exactly as if it were in the foreground. tqdm redraws
+    # with carriage returns, so do NOT pipe this through tr -- translating them
+    # to newlines unrolls the bar into one line per iteration (useful for
+    # grepping the log, useless for watching it). And -n 0 starts at the end:
+    # without it tail replays 10 "lines", each a whole epoch's worth of redraws.
+    tail -n 0 -f nohup.out
+
+    # Epoch, ETA, losses and checkpoint state in one shot
+    python3 check_train.py           # --watch 30 to refresh
+
+    # Loss curves and the fixed-slice previews
+    open http://localhost:7010       # TensorBoard, IMAGES tab
 """
 
 import yaml
@@ -217,7 +231,10 @@ def main(args):
                 if s.connect_ex(('localhost', port)) != 0:
                     break
             port += 1
-        subprocess.Popen([tb_path, '--logdir', log_dir, '--port', str(port)])
+        # Without this TensorBoard keeps only ~10 images per tag, so most
+        # of the per-epoch previews would never be viewable in the UI.
+        subprocess.Popen([tb_path, '--logdir', log_dir, '--port', str(port),
+                          '--samples_per_plugin', 'images=0'])
         logger.info(f'TensorBoard started at http://localhost:{port}')
     else:
         logger.warning(f'tensorboard not found at {tb_path}, skipping launch')
@@ -248,7 +265,8 @@ def main(args):
                                loader_val=loader_val,
                                img_size=img_size,
                                z_slice=z_slice,
-                               init_from=args.init_from)
+                               init_from=args.init_from,
+                               preview_every=args.preview_every)
     elif model_name == "UNet":
         Trainer = UNetModel(configs=config[model_name],
                             save_iter=save_iter,
@@ -259,7 +277,8 @@ def main(args):
                             loader_val=loader_val,
                             img_size=img_size,
                             z_slice=z_slice,
-                            init_from=args.init_from)
+                            init_from=args.init_from,
+                            preview_every=args.preview_every)
 
     Trainer.train()
 
@@ -276,6 +295,10 @@ if __name__ == "__main__":
     parser.add_argument('--num_downs', type=int, default='3')
     parser.add_argument('--model_name', type=str, default='Pix2Pix') # Pix2Pix, UNet
     parser.add_argument('--gpu_id', type=int, default=0)
+    parser.add_argument('--preview_every', type=int, default=1,
+                        help='Save a preview PNG every N epochs (default: '
+                             'every epoch). Each one costs two forward passes '
+                             'and ~340 KB.')
     parser.add_argument('--init_from', type=str, default=None,
                         help='Checkpoint whose WEIGHTS seed a fresh run '
                              '(fine-tuning). Optimiser state and epoch counter '
