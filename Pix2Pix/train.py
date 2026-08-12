@@ -138,6 +138,9 @@ class ModelUNet:
         elif self.init_from:
             _load_weights_only(self.init_from, {'netG': netG}, self.device)
 
+        # Chosen once, before training, so every preview shows the same slices.
+        preview = preview_samples(self.loader_train, self.loader_val)
+
         for epoch in range(st_epoch + 1, self.num_epoch + 1):
             ## training phase
             netG.train()
@@ -164,28 +167,6 @@ class ModelUNet:
 
             self.writer.add_scalar('loss_l1_train', mean(loss_l1_train), epoch)
 
-            input = input.to('cpu').detach().numpy().transpose(0, 2, 3, 1)
-            output = output.to('cpu').detach().numpy().transpose(0, 2, 3, 1)
-            label = label.to('cpu').detach().numpy().transpose(0, 2, 3, 1)
-
-            plt.subplot(131)
-            plt.title("output")
-            plt.imshow(denormalize(output[0][:, :, 0], max_l), cmap='gray')
-            plt.axis("off")
-
-            plt.subplot(132)
-            plt.title(name[0])
-            plt.imshow(denormalize(input[0][:, :, 0], max_l), cmap='gray')
-            plt.axis("off")
-
-            plt.subplot(133)
-            plt.title("label")
-            plt.imshow(denormalize(label[0][:, :, 0], max_l), cmap='gray')
-            plt.axis("off")
-
-            plt.savefig(os.path.join(self.result_dir, f"output_train{epoch}.png"))
-            plt.close()
-
             ## validation phase
             with torch.no_grad():
                 netG.eval()
@@ -193,8 +174,12 @@ class ModelUNet:
                 loss_l1_val = []
 
                 for i, data in enumerate(self.loader_val, 1):
-                    input = data[1].to(self.device)
-                    label = data[0].to(self.device)
+                    # The dataset yields (input, label, ...) -- these two were
+                    # swapped here, so loss_l1_val measured the FBP against a
+                    # denoised prediction of the label. Any UNet val curve from
+                    # before this fix is not comparable with one after it.
+                    input = data[0].to(self.device)
+                    label = data[1].to(self.device)
 
                     # forward
                     output = netG(input)
@@ -203,6 +188,10 @@ class ModelUNet:
                     loss_l1_val += [loss_l1.item()]
 
                 self.writer.add_scalar('loss_l1_val', mean(loss_l1_val), epoch)
+
+            if epoch == 1 or (epoch % self.save_iter) == 0:
+                save_preview(netG, epoch, max_l, preview,
+                             self.device, self.result_dir, self.writer)
 
             if (epoch % self.save_iter) == 0:
                 self.save(self.ckpt_dir, netG, optimG, epoch)
@@ -277,8 +266,120 @@ class ModelUNet:
                         id += 1
 
 
+def fixed_sample(loader, index):
+    """A deterministic sample straight from the dataset, augmentation off.
+
+    The preview has to show the SAME slice every epoch or the images cannot be
+    compared across epochs -- and the train loader both shuffles and applies
+    random flips/rotations. Reading the dataset directly with `transform`
+    temporarily disabled sidesteps both.
+
+    Returns (input, label, name) with a batch axis, or None if the split is
+    empty.
+    """
+    dataset = loader.dataset
+    if len(dataset) == 0:
+        return None
+    index = index % len(dataset)
+
+    transform, dataset.transform = getattr(dataset, 'transform', None), None
+    try:
+        inp, lab, name = dataset[index][:3]
+    finally:
+        dataset.transform = transform
+
+    return inp.unsqueeze(0), lab.unsqueeze(0), name
+
+
+def preview_samples(loader_train, loader_val):
+    """One fixed train slice and one fixed val slice, picked once.
+
+    Deliberately no test slice: judging checkpoints by how the test images look
+    leaks the held-out set into model selection. Pick the epoch on val, then
+    run step6 on test once.
+    """
+    samples = []
+    for split, loader in (('train', loader_train), ('val', loader_val)):
+        if loader is None:
+            continue
+        # Mid-dataset rather than index 0 -- the first slices of a volume are
+        # usually near-empty air.
+        got = fixed_sample(loader, len(loader.dataset) // 2)
+        if got is not None:
+            samples.append((split, got))
+    return samples
+
+
+def save_preview(netG, epoch, max_l, samples, device, result_dir, writer):
+    """Save/log the fixed previews: input, output, label, |output-label|.
+
+    The difference panel is the point of this figure -- v12 expects the error
+    to change character (long streaks -> local texture), and that is visible in
+    the residual long before it moves the L1 number much.
+    """
+    if not samples:
+        return
+
+    was_training = netG.training
+    netG.eval()
+
+    # The panels are square, so each row needs its column width PLUS room for a
+    # title -- sized to the width, titles land on the row above. constrained
+    # layout then keeps them clear of the suptitle as well.
+    col_w = 13 / 4
+    fig, axes = plt.subplots(len(samples), 4,
+                             figsize=(13, (col_w + 0.55) * len(samples) + 0.4),
+                             squeeze=False, layout='constrained')
+    with torch.no_grad():
+        for row, (split, (inp, lab, name)) in enumerate(samples):
+            out = netG(inp.to(device))
+
+            img_in = denormalize(inp[0, 0].cpu().numpy(), max_l)
+            img_out = denormalize(out[0, 0].cpu().numpy(), max_l)
+            img_lab = denormalize(lab[0, 0].cpu().numpy(), max_l)
+            diff = np.abs(img_out - img_lab)
+
+            # input/output/label share one window so the three are directly
+            # comparable; the residual gets its own. Scaled to the 99th
+            # percentile, not the max -- a couple of hot pixels at a metal edge
+            # would otherwise push everything else to black and hide exactly
+            # the low-level texture this panel exists to show.
+            vmin, vmax = float(img_lab.min()), float(img_lab.max())
+            dmax = float(np.percentile(diff, 99)) or float(diff.max()) or 1.0
+            panels = [(f'{name} input', img_in, vmin, vmax, 'gray'),
+                      ('output', img_out, vmin, vmax, 'gray'),
+                      ('label', img_lab, vmin, vmax, 'gray'),
+                      (f'|diff| (p99)  MAE={diff.mean():.4g}',
+                       diff, 0.0, dmax, 'inferno')]
+
+            for col, (title, img, lo, hi, cmap) in enumerate(panels):
+                ax = axes[row][col]
+                ax.imshow(img, cmap=cmap, vmin=lo, vmax=hi)
+                ax.set_title(f'[{split}] {title}' if col == 0 else title,
+                             fontsize=9)
+                ax.axis('off')
+
+    fig.suptitle(f'epoch {epoch}', fontsize=11)
+
+    os.makedirs(result_dir, exist_ok=True)
+    fig.savefig(os.path.join(result_dir, f'preview_epoch{epoch:04d}.png'),
+                dpi=110)
+
+    # Also into TensorBoard, so epochs can be compared with the step slider
+    # instead of opening files one by one.
+    if writer is not None:
+        fig.canvas.draw()
+        rgb = np.asarray(fig.canvas.buffer_rgba())[..., :3]
+        writer.add_image('preview', rgb, epoch, dataformats='HWC')
+
+    plt.close(fig)
+
+    if was_training:
+        netG.train()
+
+
 class Model:
-    def __init__(self, configs, 
+    def __init__(self, configs,
                  save_iter,
                  ckpt_dir,result_dir,
                  device, writer, gpu_id,
@@ -334,6 +435,13 @@ class Model:
         torch.save({'netG': netG.state_dict(), 'netD': netD.state_dict(),
                     'optimG': optimG.state_dict(), 'optimD': optimD.state_dict()},
                    '%s/model_epoch%04d.pth' % (ckpt_dir, epoch))
+
+    def preview_samples(self):
+        return preview_samples(self.loader_train, self.loader_val)
+
+    def save_preview(self, netG, epoch, max_l, samples):
+        return save_preview(netG, epoch, max_l, samples,
+                            self.device, self.result_dir, self.writer)
 
     def load(self, ckpt_dir, netG, netD=[], optimG=[], optimD=[], epoch=[], mode='train'):
         if not epoch:
@@ -403,6 +511,9 @@ class Model:
         #     print("Model is a standard nn.Module (no parallel wrapper).")
 
 
+        # Chosen once, before training, so every preview shows the same slices.
+        preview = self.preview_samples()
+
         for epoch in range(st_epoch + 1, self.num_epoch + 1):
             ## training phase
             netG.train()
@@ -469,41 +580,6 @@ class Model:
             self.writer.add_scalar('loss_D_real_train', mean(loss_D_real_train), epoch)
 
 
-            input = input.to('cpu').detach().numpy().transpose(0, 2, 3, 1)
-            output = output.to('cpu').detach().numpy().transpose(0, 2, 3, 1)
-            label = label.to('cpu').detach().numpy().transpose(0, 2, 3, 1)
-            
-            
-            
-            
-            
-            
-
-
-            plt.subplot(131)
-            plt.title("output")
-            plt.imshow(denormalize(output[0][:,:,0],max_l) , cmap='gray')  # Grayscale 이미지
-            # plt.imshow((output_num[0] * 0.5) + 0.5,cmap='gray')  # Grayscale 이미지
-            plt.axis("off")  # 축 제거
-
-            plt.subplot(132)
-            plt.title(name[0])
-            plt.imshow((denormalize(input[0][:,:,0],max_l) ),cmap='gray')  # Grayscale 이미지
-            plt.axis("off")  # 축 제거
-
-
-
-            plt.subplot(133)
-            plt.title("label")
-            plt.imshow(denormalize(label[0][:,:,0] ,max_l),cmap='gray')  # Grayscale 이미지
-            plt.axis("off")  # 축 제거
-
-
-            # 이미지 저장
-            plt.savefig(os.path.join(self.result_dir,f"output_train{epoch}.png"))
-
-
-
             ## validation phase
             with torch.no_grad():
                 netG.eval()
@@ -515,10 +591,13 @@ class Model:
                 loss_D_fake_val = []
 
                 for i, data in enumerate(self.loader_val, 1):
-
-
-                    input = data[1].to(self.device)
-                    label = data[0].to(self.device)
+                    # The dataset yields (input, label, ...) -- these two were
+                    # swapped here, so every val loss was measured on the model
+                    # running backwards: fed the 720-view label and scored
+                    # against the sparse FBP. Val curves from before this fix
+                    # are not comparable with ones after it.
+                    input = data[0].to(self.device)
+                    label = data[1].to(self.device)
 
                     # forward netG
                     output = netG(input)
@@ -552,6 +631,11 @@ class Model:
 
 
                         
+            # Epoch 1 too, so there is a "before" frame to compare against
+            # rather than waiting a whole save_iter for the first image.
+            if epoch == 1 or (epoch % self.save_iter) == 0:
+                self.save_preview(netG, epoch, max_l, preview)
+
             if (epoch % self.save_iter) == 0:
                 self.save(self.ckpt_dir, netG, netD, optimG, optimD, epoch)
 
