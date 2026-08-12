@@ -1,11 +1,11 @@
 """Reconstruct from network-synthesised views instead of the 9 measured ones.
 
-This is the v12 replacement for `step1_make_fbp.py`. Everything downstream
+This is the v12 replacement for `step1a_make_fbp.py`. Everything downstream
 (step4 dataset, step5 training) is unchanged in shape -- it still receives one
 `{'fbp_lh': volume}` pickle per subject -- only the reconstruction that goes in
 is denser.
 
-    step1_make_fbp.py    9 measured views                  -> fbp_lh
+    step1a_make_fbp.py   9 measured views                  -> fbp_lh
     step1b (this)        9 measured + N synthesised views   -> fbp_interp
 
 The views come from the delta-conditioned interpolator in
@@ -242,7 +242,7 @@ def fbp_from_views(prj, angles_deg, obj_height, base_params, so_dir, img_size, n
 
 def main():
     ap = argparse.ArgumentParser(
-        description='FBP from network-synthesised views (v12 replacement for step1)')
+        description='FBP from network-synthesised views (v12 replacement for step1a)')
     ap.add_argument('--target_gap', type=float, default=5.0,
                     help='Bisect until every angular gap is at most this (deg)')
     ap.add_argument('--gap_tol', type=float, default=0.5,
@@ -307,7 +307,7 @@ def main():
         prj_l_all, prj_h_all = d['prj_l'], d['prj_h']
         del d
 
-        # Per-subject calibrated geometry, as in step1_make_fbp.py.
+        # Per-subject calibrated geometry, as in step1a_make_fbp.py.
         geo_path = f'{current_folder}/geo_param/{sub}.yaml'
         params = get_params(file_path=yaml_path, geo_path=geo_path, view_9=True)
         with open(geo_path, 'r') as f:
@@ -320,7 +320,7 @@ def main():
         prj_l = prj_l_all[:, idx9, :].copy()
         nz = len(prj_l)
 
-        # obj_height from the low-energy 9-view stack, identical to step1.
+        # obj_height from the low-energy 9-view stack, identical to step1a.
         params['img_mat'][2] = nz
         obj_height = get_obj_height(prj_l, 1, ud, args.img_size, params)
 

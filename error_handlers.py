@@ -222,9 +222,9 @@ def validate_data_directory(data_dir: str, set_name: str = None) -> None:
         raise FileIOError(
             f"Data directory not found: {data_dir}\n"
             f"Please run the preprocessing steps first:\n"
-            f"1. step1_Fullview_projection_from_MBIR.py\n"
-            f"2. step2_scale_back_and_run_FBP.py\n"
-            f"3. step3_Dataset_Fin.py"
+            f"1. step1b_make_fbp_interp.py (or step1a_make_fbp.py for fbp_lh)\n"
+            f"2. step1c_calibrate_norm.py\n"
+            f"3. step4_Dataset_Fin.py"
         )
 
     if not os.path.isdir(data_dir):
@@ -260,7 +260,7 @@ def check_checkpoint_exists(ckpt_dir: str, epoch: Optional[int] = None) -> bool:
         raise FileIOError(
             f"Checkpoint directory not found: {ckpt_dir}\n"
             f"For inference, you need to train the model first using:\n"
-            f"python step4_Train_FinModel.py"
+            f"python3 step5_Train_FinModel.py"
         )
 
     if epoch is not None:

@@ -26,7 +26,7 @@ Model Architecture:
     - Loss: Adversarial loss + L1 reconstruction loss
 
 Input:
-    - Preprocessed datasets from step3
+    - Preprocessed datasets from step4
 
 Output:
     - Model checkpoints: Pix2Pix/<model_name>/<exp>/ckpt/<img_size>/
@@ -34,13 +34,13 @@ Output:
     - Results: Pix2Pix/<model_name>/<exp>/result/<img_size>/
 
 Usage:
-    python3 step4_Train_FinModel.py --img_size 512 --num_downs_G 7 --num_downs_D 4 --gpu_id 0
+    python3 step5_Train_FinModel.py --img_size 512 --num_downs_G 7 --num_downs_D 4 --gpu_id 0
 
     # Pix2Pix (nohup)
-    nohup python3 step4_Train_FinModel.py --img_size 512 --num_downs_G 7 --num_downs_D 4 --model_name Pix2Pix --gpu_id 0 > nohup.out 2>&1 &
+    nohup python3 -u step5_Train_FinModel.py --img_size 512 --num_downs_G 7 --num_downs_D 4 --model_name Pix2Pix --gpu_id 0 > nohup.out 2>&1 &
 
     # UNet (nohup)
-    nohup python3 step4_Train_FinModel.py --img_size 512 --num_downs 3 --model_name UNet --gpu_id 0 > nohup.out 2>&1 &
+    nohup python3 -u step5_Train_FinModel.py --img_size 512 --num_downs 3 --model_name UNet --gpu_id 0 > nohup.out 2>&1 &
 """
 
 import yaml

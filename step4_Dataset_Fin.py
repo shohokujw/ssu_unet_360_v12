@@ -19,14 +19,15 @@ This script prepares the final training/validation/test datasets by:
 5. Saving preprocessed data for model training
 
 Input:
-    - FBP reconstructions from step2 (sparse-view)
+    - FBP reconstructions named by `input_name`: step1b (fbp_interp) or
+      step1a (fbp_lh, the v11 9-view baseline)
     - Full-view reconstructions (ground truth labels)
 
 Output:
     - Preprocessed pickle files in datasets/<model_name>/fin_set/<img_size>/{train,val,test}/
 
 Usage:
-    python step3_Dataset_Fin.py --img_size 512
+    python3 step4_Dataset_Fin.py --img_size 512
 """
 
 import os
@@ -149,7 +150,8 @@ lst_data_fbp   = sorted(glob(os.path.join(fbp_dir, '*.pkl')))
 
 if not lst_data_fbp:
     logger.error(f"No FBP data files found in: {fbp_dir}")
-    logger.error("Please run step2_scale_back_and_run_FBP.py first.")
+    logger.error('Run step1b_make_fbp_interp.py (or step1a_make_fbp.py if '
+                 'input_name is "fbp_lh") first.')
     sys.exit(1)
 
 # Normalisation constants for THIS input. The 9-view constants do not transfer

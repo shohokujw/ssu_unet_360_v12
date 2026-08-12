@@ -71,7 +71,7 @@ python step6_Infer_FinModel.py --img_size 512 --num_downs_G 7 --num_downs_D 4 --
 | `step6_Infer_FinModel.py` | 실험 경로 접미사를 step5와 동기화 |
 | `Pix2Pix/train.py` | `init_from` 지원 (`_load_weights_only`) |
 
-`step1_make_fbp.py`, `step2`, `step3`은 손대지 않았다 — v11 baseline을 그대로 재현할 수
+`step1a_make_fbp.py`, `step2`, `step3`은 손대지 않았다 — v11 baseline을 그대로 재현할 수
 있어야 비교가 성립하기 때문이다.
 
 ## 세 가지 함정

@@ -41,7 +41,7 @@ interp_ckpt : "/home/jwlee/sinogram_interpolation_pix2pix_v9/experiments/v10_UNe
 
 # Which reconstruction feeds the denoiser.
 #   fbp_interp -> step1b output (synthesised views)   <- v12 default
-#   fbp_lh     -> step1 output  (9 measured views)    <- v11 behaviour
+#   fbp_lh     -> step1a output (9 measured views)    <- v11 behaviour
 input_name : "fbp_interp"
 
 # model specification

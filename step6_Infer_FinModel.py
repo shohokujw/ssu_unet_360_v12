@@ -1,23 +1,23 @@
 """
-Model Inference Script (Step 5)
+Model Inference Script (Step 6)
 
 This script performs inference using a trained Pix2Pix model on test data.
 
 Inference Process:
 1. Load trained model checkpoint from specified epoch
-2. Load test dataset (preprocessed in step3)
+2. Load test dataset (preprocessed in step4)
 3. Generate high-quality reconstructions from sparse-view inputs
 4. Save results as pickle files for evaluation
 
 Input:
-    - Trained model checkpoint from step4
-    - Test dataset from step3
+    - Trained model checkpoint from step5
+    - Test dataset from step4
 
 Output:
     - Reconstructed images saved in Pix2Pix/<model_name>/<exp>/result/<img_size>/
 
 Usage:
-    python step5_Infer_FinModel.py --img_size 512 --num_downs_G 7 --num_downs_D 4 --test_epoch 700 --gpu_id 0
+    python3 step6_Infer_FinModel.py --img_size 512 --num_downs_G 7 --num_downs_D 4 --test_epoch 700 --gpu_id 0
 """
 
 import yaml
