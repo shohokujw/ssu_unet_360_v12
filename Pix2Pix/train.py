@@ -56,7 +56,8 @@ class ModelUNet:
                  test_epoch=None,
                  init_from=None,
                  preview_every=1,
-                 preview_baseline=None):
+                 preview_baseline=None,
+                 label_max_lh=None):
 
         self.ckpt_dir = ckpt_dir
         self.result_dir = result_dir
@@ -77,6 +78,11 @@ class ModelUNet:
         # every epoch; raise it if the PNGs become a nuisance.
         self.preview_every = max(1, int(preview_every))
         self.preview_baseline = preview_baseline or {}
+        # What step4 normalised the label with. Falls back to the hardcoded
+        # normalize_param() only so an old caller still runs -- that constant
+        # is the v11 input's, not the label's, and mis-scales everything it
+        # touches by 1.375x.
+        self.label_max_lh = label_max_lh
         self.test_epoch = test_epoch
         self.init_from = init_from
 
@@ -89,6 +95,24 @@ class ModelUNet:
 
         self.img_size = img_size
         self.z_slice = z_slice
+
+    def display_max(self):
+        """Constant that turns normalised values back into physical units.
+
+        Both the preview and the saved reconstructions approximate the LABEL,
+        so they invert with the label's constant -- the one step4 normalised it
+        with. normalize_param() is kept only as a fallback for a caller that
+        does not pass one; it returns the v11 input constants averaged 50/50
+        rather than by w_l/w_h, which is off by 1.375x.
+        """
+        if self.label_max_lh is not None:
+            return self.label_max_lh
+        max_h, max_l = normalize_param(self.img_size)
+        fallback = 0.5 * (max_h + max_l)
+        print(f'  WARNING: no label_max_lh passed; falling back to '
+              f'normalize_param() = {fallback:.4f}. Physical values will be '
+              f'wrong unless that happens to match params.yml label norm.')
+        return fallback
 
     def save(self, ckpt_dir, netG, optimG, epoch):
         if not os.path.exists(ckpt_dir):
@@ -103,10 +127,10 @@ class ModelUNet:
             epoch = latest_epoch(ckpt_dir)
 
         map_loc = f"cuda:{self.gpu_id}" if torch.cuda.is_available() else "cpu"
-        dict_net = torch.load('%s/model_epoch%04d.pth' % (ckpt_dir, epoch),
-                              map_location=map_loc)
+        path, epoch = resolve_ckpt(ckpt_dir, epoch)
+        dict_net = torch.load(path, map_location=map_loc)
 
-        print('Loaded %dth network' % epoch)
+        print(f'Loaded network from {os.path.basename(path)} (epoch {epoch})')
 
         if mode == 'train':
             netG.load_state_dict(dict_net['netG'])
@@ -119,7 +143,7 @@ class ModelUNet:
             return netG, epoch
 
     def train(self):
-        _, max_l = normalize_param(self.img_size)
+        max_l = self.display_max()
 
         # UNet만 생성 (Discriminator 없음)
         netG = UNet(nch_in=1, nch_out=1, num_down=self.num_down, dropout=self.dropout)
@@ -209,8 +233,7 @@ class ModelUNet:
                 self.save(self.ckpt_dir, netG, optimG, epoch)
 
     def test(self):
-        max_h, max_l = normalize_param(self.img_size)
-        max_lh = 0.5 * (max_h + max_l)
+        max_lh = self.display_max()
 
         netG = UNet(nch_in=1, nch_out=1, num_down=self.num_down, dropout=self.dropout)
         init_net(netG, init_type='normal', init_gain=self.init_gain, gpu_ids=[self.gpu_id])
@@ -279,6 +302,26 @@ class ModelUNet:
 
 
 BEST_NAME = 'model_best.pth'
+
+
+def resolve_ckpt(ckpt_dir, epoch):
+    """Path of the checkpoint to load, plus the epoch it actually holds.
+
+    `epoch` may be a number, or "best" to take model_best.pth -- the lowest
+    val L1 the run ever reached, which for a GAN is rarely one of the epochs
+    that happened to land on the save interval.
+    """
+    if isinstance(epoch, str) and epoch.lower() == 'best':
+        path = os.path.join(ckpt_dir, BEST_NAME)
+        if not os.path.exists(path):
+            raise FileNotFoundError(
+                f'{path} not found. It is written once validation improves, so '
+                f'a run that predates best-checkpointing has none -- pass a '
+                f'numeric --test_epoch instead.')
+        rec = torch.load(path, map_location='cpu').get('epoch')
+        return path, (rec if rec is not None else 'best')
+
+    return os.path.join(ckpt_dir, 'model_epoch%04d.pth' % int(epoch)), int(epoch)
 
 
 def latest_epoch(ckpt_dir):
@@ -519,7 +562,8 @@ class Model:
                  test_epoch=None,
                  init_from=None,
                  preview_every=1,
-                 preview_baseline=None):
+                 preview_baseline=None,
+                 label_max_lh=None):
 
         
         self.ckpt_dir = ckpt_dir
@@ -551,6 +595,11 @@ class Model:
         # every epoch; raise it if the PNGs become a nuisance.
         self.preview_every = max(1, int(preview_every))
         self.preview_baseline = preview_baseline or {}
+        # What step4 normalised the label with. Falls back to the hardcoded
+        # normalize_param() only so an old caller still runs -- that constant
+        # is the v11 input's, not the label's, and mis-scales everything it
+        # touches by 1.375x.
+        self.label_max_lh = label_max_lh
 
         self.test_epoch = test_epoch
         self.init_from = init_from
@@ -565,6 +614,24 @@ class Model:
         self.img_size = img_size
         self.z_slice = z_slice
         
+    def display_max(self):
+        """Constant that turns normalised values back into physical units.
+
+        Both the preview and the saved reconstructions approximate the LABEL,
+        so they invert with the label's constant -- the one step4 normalised it
+        with. normalize_param() is kept only as a fallback for a caller that
+        does not pass one; it returns the v11 input constants averaged 50/50
+        rather than by w_l/w_h, which is off by 1.375x.
+        """
+        if self.label_max_lh is not None:
+            return self.label_max_lh
+        max_h, max_l = normalize_param(self.img_size)
+        fallback = 0.5 * (max_h + max_l)
+        print(f'  WARNING: no label_max_lh passed; falling back to '
+              f'normalize_param() = {fallback:.4f}. Physical values will be '
+              f'wrong unless that happens to match params.yml label norm.')
+        return fallback
+
     def save(self, ckpt_dir, netG, netD, optimG, optimD, epoch):
         if not os.path.exists(ckpt_dir):
             os.makedirs(ckpt_dir)
@@ -587,9 +654,10 @@ class Model:
             epoch = latest_epoch(ckpt_dir)
 
         map_loc = f"cuda:{self.gpu_id}" if torch.cuda.is_available() else "cpu"
-        dict_net = torch.load('%s/model_epoch%04d.pth' % (ckpt_dir, epoch), map_location=map_loc)
+        path, epoch = resolve_ckpt(ckpt_dir, epoch)
+        dict_net = torch.load(path, map_location=map_loc)
 
-        print('Loaded %dth network' % epoch)
+        print(f'Loaded network from {os.path.basename(path)} (epoch {epoch})')
 
         if mode == 'train':
             netG.load_state_dict(dict_net['netG'])
@@ -607,8 +675,7 @@ class Model:
 
     def train(self):
 
-
-        _, max_l = normalize_param(self.img_size)
+        max_l = self.display_max()
         
         
         netG = UNet(nch_in=1, nch_out=1, num_down=self.num_down_G)
@@ -785,8 +852,7 @@ class Model:
     def test(self):
 
 
-        max_h, max_l = normalize_param(self.img_size)
-        max_lh = 0.5*(max_h + max_l)
+        max_lh = self.display_max()
         netG = UNet(nch_in=1, nch_out=1, num_down=self.num_down_G)
         init_net(netG, init_type='normal', init_gain=0.02, gpu_ids=[self.gpu_id])
 

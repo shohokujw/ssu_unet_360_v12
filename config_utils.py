@@ -134,6 +134,21 @@ def get_normalization_params(params, data_type, img_size):
         ) from e
 
 
+def get_label_max_lh(params, img_size):
+    """The constant step4 normalised the LABEL with, so output can be inverted.
+
+    Pix2Pix/model_v2.normalize_param() hardcodes 0.51/0.37 -- those are the
+    v11 *input* constants, not the label's, and it averages them 50/50 instead
+    of by w_l/w_h. Inverting a prediction of the label with that number scales
+    every saved reconstruction by 0.44/0.32, so metrics computed against the
+    label come out meaningless. This reads what step4 actually used:
+
+        max_lh = w_l * max_l + w_h * max_h        (step4_Dataset_Fin.py)
+    """
+    n = get_normalization_params(params, 'label', img_size)
+    return params['w_l'] * n['max_l'] + params['w_h'] * n['max_h']
+
+
 def get_training_params(params):
     """
     Get training-related parameters.

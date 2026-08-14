@@ -67,7 +67,7 @@ sys.path.insert(0, os.path.join(current_folder, 'Pix2Pix'))
 
 from Pix2Pix.train import Model as Pix2PixModel
 from Pix2Pix.train import ModelUNet as UNetModel
-from config_utils import load_ct_params, get_batch_size
+from config_utils import load_ct_params, get_batch_size, get_label_max_lh
 from error_handlers import (
     validate_gpu_availability, validate_image_size,
     validate_data_directory, safe_create_directory, log_system_info, logger
@@ -197,6 +197,10 @@ def main(args):
 
     # Optional extra preview panel: the same slice as the old 9-view FBP, so
     # what the network is fed now sits beside what v11 was fed.
+    # Physical units for the preview come from the label's constant, not the
+    # one hardcoded in model_v2.normalize_param().
+    label_max_lh = get_label_max_lh(params_ct, img_size)
+
     preview_baseline = params_ct.get('preview_baseline') or {}
     if preview_baseline.get('path'):
         logger.info(f"Preview baseline: {preview_baseline['path']}")
@@ -273,7 +277,8 @@ def main(args):
                                z_slice=z_slice,
                                init_from=args.init_from,
                                preview_every=args.preview_every,
-                               preview_baseline=preview_baseline)
+                               preview_baseline=preview_baseline,
+                               label_max_lh=label_max_lh)
     elif model_name == "UNet":
         Trainer = UNetModel(configs=config[model_name],
                             save_iter=save_iter,
@@ -286,7 +291,8 @@ def main(args):
                             z_slice=z_slice,
                             init_from=args.init_from,
                             preview_every=args.preview_every,
-                            preview_baseline=preview_baseline)
+                            preview_baseline=preview_baseline,
+                            label_max_lh=label_max_lh)
 
     Trainer.train()
 

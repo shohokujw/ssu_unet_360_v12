@@ -201,6 +201,7 @@ Pix2Pix/**/log/
 
 # nohup
 nohup.out
+nohup_*.out
 
 # OS specific
 .DS_Store

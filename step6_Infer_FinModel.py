@@ -17,6 +17,11 @@ Output:
     - Reconstructed images saved in Pix2Pix/<model_name>/<exp>/result/<img_size>/
 
 Usage:
+    # Best checkpoint, test split only
+    python3 step6_Infer_FinModel.py --img_size 512 --num_downs_G 7 --num_downs_D 4 \
+        --test_epoch best --sets test --gpu_id 0
+
+    # A specific epoch, every split (~46 GB of pickles)
     python3 step6_Infer_FinModel.py --img_size 512 --num_downs_G 7 --num_downs_D 4 --test_epoch 700 --gpu_id 0
 """
 
@@ -34,7 +39,7 @@ import torch
 from torch.utils.data import DataLoader
 from include.dataloader import PickelDatasetv2
 import argparse
-from config_utils import load_ct_params
+from config_utils import load_ct_params, get_label_max_lh
 
 def main(args):
 
@@ -73,19 +78,29 @@ def main(args):
     print(args)
     
     #ckpt_dir =  f"{current_folder}/{model_name}/{data_name}/{exp}/ckpt/{img_size}"
-    ckpt_dir =  f"{current_folder}/{model_name}/{data_name}/{exp}_dropout_3{exp_suffix}/ckpt/{img_size}"
+    ckpt_dir = args.ckpt_dir or \
+        f"{current_folder}/{model_name}/{data_name}/{exp}_dropout_3{exp_suffix}/ckpt/{img_size}"
 
-    
-    result_dir = f"{current_folder}/{model_name}/{data_name}/{exp}_dropout_3{exp_suffix}/result/{img_size}"
+    result_dir = args.result_dir or \
+        f"{current_folder}/{model_name}/{data_name}/{exp}_dropout_3{exp_suffix}/result/{img_size}"
     os.makedirs(result_dir, exist_ok=True)
 
-    data_dir = f'{current_folder}/datasets/{data_name}/fin_set/{img_size}'
+    data_dir = args.data_dir or f'{current_folder}/datasets/{data_name}/fin_set/{img_size}'
+
+    print(f'ckpt   : {ckpt_dir}')
+    print(f'data   : {data_dir}')
+    print(f'result : {result_dir}')
     #data_dir = f"/mnt/c/work/backup/v6/model_2_512_mbir_random_split/fin_set/{img_size}"
+
+    # Saved reconstructions must invert with the constant step4 normalised the
+    # label with, or every physical value is off by a fixed factor.
+    label_max_lh = get_label_max_lh(params, img_size)
+    print(f'label max_lh = {label_max_lh:.4f}')
 
     device = torch.device(f'cuda:{args.gpu_id}' if torch.cuda.is_available() else 'cpu')
     print('device : ',device)
 
-    set_names = ["train", "test", "val"]
+    set_names = args.sets
 
     for set_name in set_names:
 
@@ -107,7 +122,8 @@ def main(args):
                         loader_val = loader_test,
                         img_size = img_size,
                         z_slice=z_slice,
-                        test_epoch=args.test_epoch)
+                        test_epoch=args.test_epoch,
+                        label_max_lh=label_max_lh)
 
 
         Tester.test()
@@ -125,7 +141,28 @@ if __name__ == "__main__":
     parser.add_argument('--num_downs', type=int, default='3')
     parser.add_argument('--model_name', type=str, default='Pix2Pix')
     parser.add_argument('--gpu_id', type=int, default=0)
-    parser.add_argument('--test_epoch', type=int, default=850)
+    parser.add_argument('--test_epoch', default='best',
+                        help='Checkpoint to run: an epoch number, or "best" '
+                             '(model_best.pth, the lowest val L1 of the run). '
+                             'Default: best.')
+    parser.add_argument('--ckpt_dir', type=str, default=None,
+                        help='Checkpoint directory to read instead of this '
+                             'experiment\'s. Use with --data_dir/--result_dir '
+                             'to score another run (e.g. the v11 baseline) '
+                             'through this fixed code path rather than its own, '
+                             'which denormalises with the wrong constant.')
+    parser.add_argument('--data_dir', type=str, default=None,
+                        help='fin_set directory to read instead of this '
+                             'project\'s. Must be normalised the same way the '
+                             'checkpoint was trained on.')
+    parser.add_argument('--result_dir', type=str, default=None,
+                        help='Where to write reconstructions.')
+    parser.add_argument('--sets', nargs='+', default=['train', 'test', 'val'],
+                        choices=['train', 'test', 'val'],
+                        help='Which splits to reconstruct. Each subject writes '
+                             'a ~640 MB pickle, so all three splits is ~46 GB; '
+                             'pass "--sets test" to only do what you are about '
+                             'to measure.')
     args = parser.parse_args()
     print(args)
     main(args)
